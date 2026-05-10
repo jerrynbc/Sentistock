@@ -38,7 +38,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from analysis.sentiment import analyze_single_sentiment
 from analysis.time_weighted_sentiment import TimeWeightedSentiment
 from analysis.indicators import calculate_all_indicators
-from analysis.stock_classifier import StockClassifier, classify_stocks_batch, print_classification_summary
+from analysis.stock_scorer import StockScorer, score_stocks_batch, print_score_summary
 
 # 聚宽账号配置
 JQ_USER = os.getenv('JQ_USER', '')
@@ -509,24 +509,30 @@ class OptimizedBacktester:
             print("❌ 没有可用数据")
             return {}
         
-        # 股票分类
+        # 股票评分
         print(f"\n{'='*80}")
-        print("股票分类")
+        print("股票评分")
         print(f"{'='*80}")
         
-        classifier = StockClassifier()
-        classification_results = classify_stocks_batch(classifier, all_data)
-        print_classification_summary(classification_results)
+        scorer = StockScorer()
+        score_results = score_stocks_batch(scorer, all_data)
+        print_score_summary(score_results)
         
-        # 过滤：只对适合情绪模块的股票做回测
+        # 过滤：只对情绪适用度 >= 阈值的股票回测
+        min_score = 50  # 默认阈值
         suitable_stocks = {
             name: df for name, df in all_data.items()
-            if classification_results.get(name, {}).get('strategy') in ['情绪模块', '混合']
+            if score_results.get(name, {}).get('scores', {}).get('sentiment_suitability', 0) >= min_score
         }
         
-        skipped = set(all_data.keys()) - set(suitable_stocks.keys())
+        skipped = {
+            name: score_results[name]['scores']['sentiment_suitability']
+            for name in set(all_data.keys()) - set(suitable_stocks.keys())
+        }
         if skipped:
-            print(f"\n⚠️ 以下股票不适合情绪模块，跳过回测：{', '.join(skipped)}")
+            print(f"\n⚠️ 以下股票情绪适用度 < {min_score}，跳过回测：")
+            for name, score in skipped.items():
+                print(f"   {name}: {score:.0f} 分")
         
         if not suitable_stocks:
             print("❌ 没有适合情绪模块的股票")
@@ -534,7 +540,7 @@ class OptimizedBacktester:
         
         # 用最优参数测试
         print(f"\n{'='*80}")
-        print("情绪模块回测（仅适合标的）")
+        print(f"情绪模块回测（适用度 >= {min_score} 的标的）")
         print(f"{'='*80}")
         
         # 先用第一只股票做参数优化
@@ -579,7 +585,7 @@ class OptimizedBacktester:
         print(f"平均夏普比率：{avg_sharpe:.2f}")
         
         return {
-            'classification': classification_results,
+            'scores': score_results,
             'params': params,
             'results': results_all,
             'summary': {

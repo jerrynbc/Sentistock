@@ -1,5 +1,5 @@
 """
-Stock Analyzer - Phase 3: 情绪分析
+Stock Analyzer - Phase 4: 情绪分析 + AI 预测
 
 运行示例:
     python src/main.py 000001
