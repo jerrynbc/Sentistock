@@ -42,6 +42,9 @@ env/
 /data/memory_*.json
 data/backtest_*.json
 
+# Models (训练好的模型文件，较大)
+/models/
+
 # Output (生成的图表和报告，不提交)
 /output/
 
