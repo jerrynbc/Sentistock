@@ -1,0 +1,33 @@
+# Core dependencies
+akshare==1.14.0          # A 股数据源
+pandas==2.2.0            # 数据处理
+numpy==1.26.0            # 数值计算
+
+# Visualization
+matplotlib==3.8.0        # 基础绘图
+pyecharts==2.0.0         # 交互式图表
+
+# Technical analysis (optional - install talib binary separately or use talipp)
+# talib-binary==0.4.9   # 技术指标库（安装复杂，可选）
+talipp==2.3.0            # 纯 Python 技术指标库（推荐）
+
+# NLP (for Phase 3)
+jieba==0.42.1            # 中文分词
+snownlp==0.12.3          # 中文情感分析
+
+# Web scraping (for Phase 3)
+requests==2.31.0
+beautifulsoup4==4.12.0
+
+# Web framework (for Phase 5)
+fastapi==0.109.0
+uvicorn==0.27.0
+streamlit==1.30.0
+
+# Machine learning (for Phase 4)
+scikit-learn==1.4.0
+
+# Development
+pytest==8.0.0
+black==24.1.0
+flake8==7.0.0
