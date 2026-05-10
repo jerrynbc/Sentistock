@@ -16,17 +16,10 @@ try:
     jq.auth(JQ_USERNAME, JQ_PASSWORD)
     print("✅ 聚宽登录成功！")
     
-    # 测试获取新闻
-    print("\n测试获取 300454 新闻数据...")
-    news = jq.get_news('300454.XSHE', start_date='2025-12-01', end_date='2025-12-31', count=10)
-    
-    if news is not None and len(news) > 0:
-        print(f"✅ 获取到 {len(news)} 条新闻")
-        print("\n前 3 条新闻:")
-        for i, (_, row) in enumerate(news.head(3).iterrows()):
-            print(f"{i+1}. {row['title'][:60]}... ({row['time'][:10]})")
-    else:
-        print("⚠️ 未获取到新闻")
+    # 测试获取股票信息
+    print("\n测试获取股票信息...")
+    info = jq.get_security_info('300454.XSHE')
+    print(f"股票名称：{info.display_name}")
     
     # 测试获取价格
     print("\n测试获取价格数据...")
@@ -35,8 +28,16 @@ try:
     if price is not None and len(price) > 0:
         print(f"✅ 获取到 {len(price)} 条价格数据")
         print(f"12 月收盘价范围：¥{price['close'].min():.2f} - ¥{price['close'].max():.2f}")
+        print(f"\n最近 5 天数据:")
+        print(price.tail(5)[['open', 'close', 'high', 'low', 'volume']])
     else:
         print("⚠️ 未获取到价格数据")
+    
+    # 测试查询额度
+    print("\n测试查询额度...")
+    count = jq.get_query_count()
+    print(f"总额度：{count['total']:,}")
+    print(f"剩余：{count['spare']:,}")
     
     print("\n✅ 聚宽 SDK 测试完成！")
     
