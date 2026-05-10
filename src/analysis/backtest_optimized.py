@@ -33,20 +33,28 @@ import sys
 import json
 import time
 
+import sys
+import os
+import json
+import time
+import argparse
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import config
 from analysis.sentiment import analyze_single_sentiment
 from analysis.time_weighted_sentiment import TimeWeightedSentiment
 from analysis.indicators import calculate_all_indicators
 from analysis.stock_scorer import StockScorer, score_stocks_batch, print_score_summary
+from analysis.utils import prepare_data as prepare_data_util
+from news.backtest_integration import generate_sentiment_series
 
 # 聚宽账号配置
 JQ_USER = os.getenv('JQ_USER', '')
 JQ_PASSWORD = os.getenv('JQ_PASSWORD', '')
 
-# 缓存目录
-CACHE_DIR = 'data/cache'
-RESULTS_FILE = 'data/backtest_results.json'
+CACHE_DIR = config.CACHE_DIR
+RESULTS_FILE = os.path.join(config.DATA_DIR, 'backtest_results.json')
 
 
 class DataCache:
@@ -86,6 +94,14 @@ class TradingStrategy:
        - 跌破 MA20 → 止损卖出
        - 收益 > take_profit → 止盈卖出
        - 持有 > max_hold_days → 强制卖出
+    3. 交易成本:
+       - 佣金: 0.025% (双向)
+       - 印花税: 0.05% (卖出)
+       - 过户费: 0.001% (双向)
+       - 滑点: 0.1%
+    4. 仓位管理:
+       - Fixed: 固定比例仓位
+       - Kelly: 基于历史胜率的凯利公式 (半凯利)
     """
     
     def __init__(
@@ -97,6 +113,10 @@ class TradingStrategy:
         max_hold_days: int = 20,
         trend_filter: bool = True,
         signal_confirm: int = 1,
+        transaction_costs: bool = True,
+        initial_capital: float = 1_000_000,
+        position_strategy: str = 'fixed',
+        position_pct: float = 1.0,
     ):
         self.buy_threshold = buy_threshold
         self.sell_threshold = sell_threshold
@@ -105,6 +125,18 @@ class TradingStrategy:
         self.max_hold_days = max_hold_days
         self.trend_filter = trend_filter
         self.signal_confirm = signal_confirm
+        self.transaction_costs = transaction_costs
+        
+        # 成本参数 (A 股实际费率)
+        self.commission_rate = 0.00025   # 佣金 0.025%
+        self.stamp_tax_rate = 0.0005     # 印花税 0.05% (卖出)
+        self.transfer_rate = 0.00001     # 过户费 0.001%
+        self.slippage_rate = 0.001       # 滑点 0.1%
+        
+        # 资金管理
+        self.initial_capital = initial_capital
+        self.position_strategy = position_strategy
+        self.position_pct = min(position_pct, 1.0)  # 最大 100%
     
     def run(self, df: pd.DataFrame) -> Dict:
         """
@@ -147,18 +179,62 @@ class TradingStrategy:
         # 交易模拟
         trades = []
         position = None  # None = 空仓, dict = 持仓
+        current_capital = self.initial_capital
+        equity_curve = [current_capital]  # 记录资金曲线
         
         for i, (date, row) in enumerate(df.iterrows()):
             if position is None:
                 # 空仓，检查买入信号
                 if row['signal'] == 1:
-                    position = {
-                        'buy_date': date,
-                        'buy_price': row['close'],
-                        'buy_sentiment': row['sentiment_score'],
-                        'high_price': row['close'],
-                        'days_held': 0,
-                    }
+                    buy_price = row['close'] * (1 + self.slippage_rate)
+                    
+                    # 计算仓位大小
+                    if self.position_strategy == 'kelly':
+                        # 凯利公式 (基于历史交易)
+                        if len(trades) >= 3:
+                            wins = [t for t in trades if t['return_pct'] > 0]
+                            losses = [t for t in trades if t['return_pct'] <= 0]
+                            
+                            if wins and losses:
+                                win_rate = len(wins) / len(trades)
+                                avg_win = np.mean([t['return_pct'] for t in wins])
+                                avg_loss = abs(np.mean([t['return_pct'] for t in losses]))
+                                
+                                # 盈亏比
+                                b = avg_win / avg_loss
+                                # 凯利公式: f = (bp - q) / b
+                                kelly_pct = (b * win_rate - (1 - win_rate)) / b
+                                
+                                # 使用半凯利 (Half-Kelly) 降低风险，并限制上限
+                                invest_pct = max(0.1, min(kelly_pct * 0.5, self.position_pct))
+                            else:
+                                invest_pct = self.position_pct
+                        else:
+                            invest_pct = self.position_pct
+                    else:
+                        invest_pct = self.position_pct
+                    
+                    invest_amount = current_capital * invest_pct
+                    
+                    # A 股取整 (手 = 100 股)
+                    shares = int(invest_amount / buy_price // 100) * 100
+                    
+                    if shares > 0:
+                        # 买入成本 (含佣金、过户费)
+                        cost = shares * buy_price * (self.commission_rate + self.transfer_rate)
+                        actual_deduction = shares * buy_price + cost
+                        
+                        if actual_deduction <= current_capital:
+                            current_capital -= actual_deduction
+                            
+                            position = {
+                                'buy_date': date,
+                                'buy_price': buy_price,
+                                'shares': shares,
+                                'buy_sentiment': row['sentiment_score'],
+                                'high_price': row['close'],
+                                'days_held': 0,
+                            }
             else:
                 # 持仓中
                 position['days_held'] += 1
@@ -191,19 +267,42 @@ class TradingStrategy:
                     sell_reason = 'timeout'
                 
                 if sell_reason:
+                    sell_price = row['close'] * (1 - self.slippage_rate)
+                    shares = position['shares']
+                    
+                    # 卖出收入 (扣除印花税、佣金、过户费)
+                    gross_revenue = shares * sell_price
+                    cost = gross_revenue * (self.stamp_tax_rate + self.commission_rate + self.transfer_rate)
+                    net_revenue = gross_revenue - cost
+                    
+                    current_capital += net_revenue
+                    
+                    # 计算单笔收益率 (用于统计)
+                    buy_cost_total = position['shares'] * position['buy_price'] * (1 + self.commission_rate + self.transfer_rate)
+                    net_pnl = net_revenue - buy_cost_total
+                    return_pct = net_pnl / buy_cost_total * 100
+                    
                     trade = {
                         'buy_date': position['buy_date'],
                         'sell_date': date,
                         'buy_price': position['buy_price'],
-                        'sell_price': row['close'],
+                        'sell_price': sell_price,
+                        'shares': shares,
                         'buy_sentiment': position['buy_sentiment'],
-                        'return_pct': current_return * 100,
+                        'return_pct': return_pct,
+                        'pnl': net_pnl,
                         'max_return_pct': max_return * 100,
                         'days_held': position['days_held'],
                         'sell_reason': sell_reason,
                     }
                     trades.append(trade)
                     position = None
+            
+            # 记录每日权益 (资金 + 持仓市值)
+            current_position_value = 0
+            if position:
+                current_position_value = position['shares'] * row['close']
+            equity_curve.append(current_capital + current_position_value)
         
         # 计算结果
         if not trades:
@@ -390,30 +489,8 @@ class OptimizedBacktester:
         
         return df
     
-    def prepare_data(self, price_df: pd.DataFrame) -> pd.DataFrame:
-        print("📊 计算指标和情绪分数...")
-        
-        df = price_df.copy()
-        column_map = {
-            'open': '开盘', 'close': '收盘', 'high': '最高', 'low': '最低',
-            'volume': '成交量', 'date': '日期'
-        }
-        df.rename(columns=column_map, inplace=True)
-        df['日期'] = pd.to_datetime(df['日期'])
-        
-        df = calculate_all_indicators(df)
-        
-        # 情绪分数
-        rsi_norm = 1 - (df['RSI'] / 100)
-        macd_hist = df['MACD_hist']
-        macd_norm = (macd_hist - macd_hist.min()) / (macd_hist.max() - macd_hist.min() + 1e-8)
-        bb_pos = (df['收盘'] - df['BB_lower']) / (df['BB_upper'] - df['BB_lower'] + 1e-8)
-        bb_norm = 1 - bb_pos
-        
-        df['sentiment_score'] = 0.4 * rsi_norm + 0.3 * macd_norm + 0.3 * bb_norm
-        df['sentiment_score'] = df['sentiment_score'].clip(0.1, 0.9)
-        
-        return df
+    def prepare_data(self, price_df: pd.DataFrame, use_real_news: bool = False, symbol: str = None) -> pd.DataFrame:
+        return prepare_data_util(price_df, symbol=symbol, use_real_news=use_real_news)
     
     def optimize_parameters(self, df: pd.DataFrame) -> Dict:
         print(f"\n{'='*80}")
@@ -482,7 +559,7 @@ class OptimizedBacktester:
         }
     
     def test_multi_stocks(self, symbols: List[str], start_date: str, end_date: str,
-                         use_cache: bool = True) -> Dict:
+                         use_cache: bool = True, use_real_news: bool = False) -> Dict:
         """多股票测试"""
         print(f"\n{'='*80}")
         print(f"多股票测试")
@@ -546,7 +623,7 @@ class OptimizedBacktester:
         # 先用第一只股票做参数优化
         first_symbol = list(suitable_stocks.keys())[0]
         print(f"\n📈 用 {first_symbol} 做参数优化...")
-        first_df = self.prepare_data(suitable_stocks[first_symbol])
+        first_df = self.prepare_data(suitable_stocks[first_symbol], use_real_news=use_real_news, symbol=first_symbol)
         opt = self.optimize_parameters(first_df)
         params = opt['params']
         
@@ -556,7 +633,7 @@ class OptimizedBacktester:
         results_all = {}
         for symbol, price_df in suitable_stocks.items():
             print(f"\n📊 测试 {symbol}...")
-            df = self.prepare_data(price_df)
+            df = self.prepare_data(price_df, use_real_news=use_real_news, symbol=symbol)
             results = strategy.run(df)
             results_all[symbol] = results
             
@@ -617,6 +694,9 @@ def main():
     parser.add_argument('--use-cache', action='store_true', help='使用缓存')
     parser.add_argument('--optimize', action='store_true', help='参数优化')
     parser.add_argument('--multi-test', action='store_true', help='多股票测试')
+    parser.add_argument('--real-news', action='store_true', help='使用真实新闻情感 (而非技术指标模拟)')
+    parser.add_argument('--position-strategy', default='fixed', choices=['fixed', 'kelly'], help='仓位管理策略')
+    parser.add_argument('--position-pct', type=float, default=1.0, help='固定仓位比例 (0.0-1.0)')
     
     args = parser.parse_args()
     
@@ -646,7 +726,7 @@ def main():
             if not backtester.login(args.user, args.password):
                 return
         
-        results = backtester.test_multi_stocks(symbols, args.start, args.end, args.use_cache)
+        results = backtester.test_multi_stocks(symbols, args.start, args.end, args.use_cache, use_real_news=args.real_news)
         return
     
     # 单股票测试
@@ -675,16 +755,24 @@ def main():
     if price_df.empty:
         return
     
-    df = backtester.prepare_data(price_df)
+    df = backtester.prepare_data(price_df, use_real_news=args.real_news, symbol=symbol)
     
     if args.optimize:
         opt = backtester.optimize_parameters(df)
         print(f"\n最优参数回测结果:")
-        strategy = TradingStrategy(**opt['params'])
+        # 参数优化仅针对信号参数，仓位管理参数独立应用
+        strategy = TradingStrategy(
+            **opt['params'], 
+            position_strategy=args.position_strategy,
+            position_pct=args.position_pct
+        )
         results = strategy.run(df)
         strategy.print_results(results)
     else:
-        strategy = TradingStrategy()
+        strategy = TradingStrategy(
+            position_strategy=args.position_strategy,
+            position_pct=args.position_pct
+        )
         results = strategy.run(df)
         strategy.print_results(results)
     
