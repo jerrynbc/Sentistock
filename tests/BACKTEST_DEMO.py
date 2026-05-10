@@ -239,7 +239,8 @@ if closed_trades:
     ax4.grid(True, alpha=0.3)
 
 plt.tight_layout()
-save_path = 'backtest_demo_result.png'
+    os.makedirs('../output/charts', exist_ok=True)
+    save_path = os.path.join('..', 'output', 'charts', 'backtest_demo_result.png')
 plt.savefig(save_path, dpi=150, bbox_inches='tight')
 print(f"\n图表已保存：{save_path}")
 plt.show()

@@ -28,7 +28,8 @@ class MemoryBank:
             symbol: 股票代码
         """
         self.symbol = symbol
-        self.memory_file = f"memory_{symbol}.json"
+        os.makedirs('data', exist_ok=True)
+        self.memory_file = os.path.join('data', f"memory_{symbol}.json")
         self.memories = self.load()
     
     def load(self) -> Dict:

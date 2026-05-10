@@ -127,7 +127,7 @@ python3 src/analysis/memory_bank.py 300454
 
 ```
 sentistock/
-├── src/
+├── src/                     # 源代码
 │   ├── data/                # 数据采集
 │   │   └── collector.py     # 股票数据获取
 │   ├── analysis/            # 分析模块
@@ -135,14 +135,28 @@ sentistock/
 │   │   ├── sentiment.py     # 情感分析
 │   │   ├── memory_bank.py   # 个人记忆库
 │   │   ├── time_weighted_sentiment.py  # 时间加权
-│   │   └── news_crawler.py  # 新闻爬虫
+│   │   ├── news_crawler.py  # 新闻爬虫
+│   │   └── backtester.py    # 回测引擎
 │   ├── visual/              # 可视化
 │   │   ├── charts.py        # K 线图
 │   │   ├── indicator_charts.py # 指标图
 │   │   └── sentiment_charts.py # 情绪图
+│   ├── utils/               # 工具函数
 │   └── main.py              # 主程序
-├── docs/                    # 文档
+├── data/                    # 数据文件 (不提交到 git)
+│   ├── data.json            # 示例数据
+│   └── memory_*.json        # 个人记忆库
+├── output/                  # 输出文件 (不提交到 git)
+│   ├── charts/              # 生成的图表
+│   └── reports/             # 分析报告
+├── tests/                   # 测试文件
+│   ├── generate_data.py     # 数据生成脚本
+│   ├── BACKTEST_DEMO.py     # 回测演示
+│   └── test_jq_template.py  # 聚宽测试模板
+├── docs/                    # 使用文档
 ├── plan/                    # 开发计划
+│   ├── phase-1-5.md         # 总体计划
+│   └── PHASE*_COMPLETED.md  # 各阶段完成记录
 ├── requirements.txt         # 依赖
 └── README.md               # 本文件
 ```
@@ -201,21 +215,15 @@ $ python3 src/analysis/joinquant_backtest.py
 
 ## 🔒 安全提醒
 
-### ⚠️ 不要上传的文件
+### ⚠️ 不提交到 Git 的文件
 
-以下文件包含敏感信息，已添加到 `.gitignore`:
+以下文件已添加到 `.gitignore`，不会提交到远程仓库：
 
 ```bash
-# 个人数据
-memory_*.json       # 个人观察记录
-*_分析报告_*.txt    # 投资分析报告
-
-# 测试文件 (可能包含密码)
-test_jq.py          # 聚宽测试 (含密码)
-.env                # 环境变量 (含密码)
-
-# 生成的图表
-*.png
+data/                   # 个人数据 (记忆库、示例数据)
+output/                 # 生成结果 (图表、分析报告)
+.env                    # 环境变量 (含密码)
+tests/test_jq.py        # 聚宽测试 (如需填密码)
 ```
 
 ### ✅ 使用环境变量

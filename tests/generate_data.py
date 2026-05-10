@@ -96,7 +96,7 @@ def generate_analysis_data(symbol: str = "000001"):
                 "volume": int(row['成交量'])
             })
     
-    with open('/workspace/stock-analyzer/data.json', 'w', encoding='utf-8') as f:
+    with open('data/data.json', 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     
     print(f"数据已保存到 data.json")

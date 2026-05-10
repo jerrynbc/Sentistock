@@ -168,33 +168,39 @@ def main():
     
     print_signals(df)
     
+    # 确保输出目录存在
+    os.makedirs('output/charts', exist_ok=True)
+    os.makedirs('output/reports', exist_ok=True)
+    
     print("\n" + "=" * 60)
     print("正在绘制技术指标图表...")
     print("=" * 60)
     
     stock_name = info.get('股票简称', symbol)
+    indicator_path = os.path.join('output', 'charts', f"{symbol}_indicators.png")
     plot_all_indicators(
         df,
         title=f"{stock_name} ({symbol}) - 技术指标分析",
-        save_path=f"{symbol}_indicators.png"
+        save_path=indicator_path
     )
     
     print("\n" + "=" * 60)
     print("正在绘制情绪分析图表...")
     print("=" * 60)
     
+    sentiment_path = os.path.join('output', 'charts', f"{symbol}_sentiment.png")
     plot_all_sentiment_charts(
         sentiment_result['timeline'],
         sentiment_result['analyzed_news'],
         sentiment_result['keywords'],
         df,
         title=f"{stock_name} ({symbol}) - 情绪分析",
-        save_path=f"{symbol}_sentiment.png"
+        save_path=sentiment_path
     )
     
     print(f"\n分析完成!")
-    print(f"技术指标图表：{symbol}_indicators.png")
-    print(f"情绪分析图表：{symbol}_sentiment.png")
+    print(f"技术指标图表：{indicator_path}")
+    print(f"情绪分析图表：{sentiment_path}")
     print("=" * 60)
     
     # 保存完整证据链到文件
@@ -278,10 +284,11 @@ def main():
     
     # 写入文件
     report_filename = f"{stock_name}_{symbol}_分析报告_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-    with open(report_filename, 'w', encoding='utf-8') as f:
+    report_path = os.path.join('output', 'reports', report_filename)
+    with open(report_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(report_content))
     
-    print(f"分析报告已保存到：{report_filename}")
+    print(f"分析报告已保存到：{report_path}")
     print("=" * 60)
 
 

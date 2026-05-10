@@ -37,29 +37,18 @@ env/
 # Jupyter Notebook
 .ipynb_checkpoints/
 
-# Data Files (包含个人数据)
-*.json
-!package.json
-memory_*.json
-*_backtest_*.json
+# Data Files (个人数据，不提交)
+/data/*.json
+/data/memory_*.json
+data/backtest_*.json
 
-# Reports (个人分析报告)
-*_分析报告_*.txt
-*_report_*.txt
-
-# Charts and Images (生成的图表)
-*.png
-!*.md
+# Output (生成的图表和报告，不提交)
+/output/
 
 # Environment Variables (包含密码！)
 .env
 .env.local
 .env.*.local
-
-# Test files with credentials
-test_jq.py
-test_*.py
-!test_template.py
 
 # Logs
 *.log

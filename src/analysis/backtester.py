@@ -455,7 +455,8 @@ class SentimentBacktester:
             
             plt.tight_layout()
             
-            save_path = f"{symbol}_backtest_result.png"
+            os.makedirs('output/charts', exist_ok=True)
+            save_path = os.path.join('output', 'charts', f"{symbol}_backtest_result.png")
             plt.savefig(save_path, dpi=150, bbox_inches='tight')
             print(f"图表已保存：{save_path}")
             plt.show()
