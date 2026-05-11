@@ -8,7 +8,7 @@ import sys
 import pandas as pd
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from core import get_engine
+from analysis.advanced_strategy import AdvancedTradingStrategy
 from analysis.stock_scorer import StockScorer
 
 def is_high_value_stock(symbol: str, df: pd.DataFrame) -> bool:
@@ -34,8 +34,6 @@ def is_high_value_stock(symbol: str, df: pd.DataFrame) -> bool:
     return True, f"高价值股票 (评分{sentiment_suitability:.1f})"
 
 def main():
-    engine = get_engine()
-    
     # 获取所有缓存股票
     cache_dir = "data/cache"
     symbols = []
@@ -51,21 +49,25 @@ def main():
     
     for symbol in symbols:
         # 获取数据
-        data = engine.get_stock_data([symbol])
-        if not data or symbol not in data:
+        try:
+            df = pd.read_csv(f'data/cache/{symbol}_2025-01-01_2025-12-31_price.csv', index_col=0)
+        except:
             continue
             
-        df = data[symbol]
         is_valuable, reason = is_high_value_stock(symbol, df)
         
         print(f"  {symbol}: {reason}")
         
         if is_valuable:
             high_value_symbols.append(symbol)
-            # 执行回测
-            result = engine.run_backtest(symbol, use_advanced=True, data={symbol: df})
-            if result:
-                results[symbol] = result
+            # 执行回测 - 直接使用AdvancedStrategy
+            try:
+                strategy = AdvancedTradingStrategy()
+                result = strategy.run(df)
+                if result:
+                    results[symbol] = result
+            except Exception as e:
+                print(f"  ❌ 回测失败: {e}")
     
     print(f"\n✅ 筛选出 {len(high_value_symbols)} 只高价值股票: {high_value_symbols}")
     
@@ -83,10 +85,9 @@ def main():
         if all(r.get('total_return', 0) > 0 for r in results.values()):
             print("  🎉 所有高价值股票均实现正收益！")
         else:
-            print("  ⚠️  部分高价值股票仍亏损，需优化策略")
+            print(f"  ⚠️  部分高价值股票仍亏损，需优化策略")
     else:
         print("\n❌ 无符合价值标准的股票")
 
 if __name__ == "__main__":
-    import pandas as pd
     main()
